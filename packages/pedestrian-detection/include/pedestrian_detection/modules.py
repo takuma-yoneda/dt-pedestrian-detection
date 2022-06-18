@@ -332,8 +332,9 @@ class DecoderNet(nn.Module):
 
         # TEMP:
         import numpy as np
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         x_ = np.tile(x.cpu().numpy(), (1, 1, 4, 4))
-        x = torch.as_tensor(x_, device=torch.device('cpu'))
+        x = torch.as_tensor(x_, device=device)
         # x = torch.tile(x, (1, 1, 4, 4))  # (batch, channel, width, height)
 
         x = self.upsample_block1(x, x3)
