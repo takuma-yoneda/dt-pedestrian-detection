@@ -13,7 +13,13 @@ dt-launchfile-init
 # NOTE: Use `dt-exec COMMAND` to run the main process (blocking process)
 
 # launching app
-dt-exec echo "This is an empty launch script. Update it to launch your application."
+echo 'hello world!!'
+pwd
+echo $CATKIN_WS_DIR
+ls packages/pedestrian-detection/include/pedestrian_detection
+export ROS_MASTER_URI=http://yoneduckie.local:11311  # TEMP
+dt-exec rosrun pedestrian_detection detect.py
+# dt-exec echo "This is an empty launch script. Update it to launch your application."
 
 
 # ----------------------------------------------------------------------------
