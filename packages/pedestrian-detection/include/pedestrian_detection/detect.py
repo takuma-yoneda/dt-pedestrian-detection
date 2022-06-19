@@ -11,6 +11,7 @@ from std_msgs.msg import Float32
 from pedestrian_detection.msg import LanePose
 
 from sensor_msgs.msg import CompressedImage, Image, PointCloud2, PointField, CompressedImage
+from duckietown_msgs.msg import BoolStamped
 import numpy as np
 import cv2
 
@@ -167,12 +168,60 @@ class Detector:
         self.lanepose_pub.publish(lanepose)
         self.pedest_pub.publish(pedest)
 
+    @torch.no_grad()
+    def test_pretrained_model(self, data_dir):
+        """Test the pretrained model with an offline data."""
+        from os.path import join as pjoin
+        from pathlib import Path
+        ROS_INFO('=== Running test_pretrained_model ===')
+        ROS_INFO(f'data_dir: {data_dir}, {len(list(Path(data_dir).iterdir()))}')
+        target_dir = Path(data_dir) / 'test'
+        target_dir.mkdir(exist_ok=True)
+        for fpath in Path(data_dir).iterdir():
+            if fpath.suffix not in ['.png', '.jpg']:
+                continue
+            ROS_INFO(str(fpath))
+            image_cv = cv2.imread(str(fpath))
+
+            img = self.process_image(image_cv, dsize=(112, 112), interpolation=cv2.INTER_CUBIC)
+
+            tensor = torch.as_tensor(img)
+            tensor = tensor.unsqueeze(0).float().to(self.device)  # Add batch dim
+
+            # Perform inference
+            segm = self.model.segment.predict(tensor)
+            segm_img = colorize_segmentation(segm.cpu().numpy())
+
+            offset, phi = self.model.lanepos.predict(tensor)
+            lanepose = LanePose(offset=offset.item(), phi=phi.item())
+
+            _, pedest_prob = self.model.pedest.predict(tensor)
+            ROS_INFO(f'pedest_prob: {pedest_prob.item()}')
+
+            # Annotate the image
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            fontScale = 0.5
+            color = (0, 0, 255)
+            # NOTE: Somehow “copy” is critical (https://stackoverflow.com/q/23830618/7057866)
+            annotated_img = cv2.resize(image_cv, dsize=(224, 224))
+            annotated_img = cv2.putText(annotated_img, f'duck-on-lane: {pedest_prob.item():.2f}', (0, 20), font, fontScale, color)
+            annotated_img = cv2.putText(annotated_img, f'offset: {offset.item():.2f}', (0, 40), font, fontScale, color)
+            annotated_img = cv2.putText(annotated_img, f'phi: {phi.item():.2f}', (0, 60), font, fontScale, color)
+
+            cv2.imwrite(str(target_dir / fpath.name), annotated_img)
+        ROS_INFO('test completed!')
+
+
 
 if __name__ == '__main__':
     import pathlib
+    import os
     cur_dir = pathlib.Path(__file__).absolute().parent
+    # duckie_name = os.getenv('VEHICLE_NAME')
     duckie_name = 'yoneduckie'
+    print('duckie_name', duckie_name)
     model_path = cur_dir / 'model.pt'
     print('model_path', model_path)
-    detector = Detector(duckie_name, model_path=model_path)
+    detector = Detector('pedestrian_detection', duckie_name, model_path=model_path)
+    # detector.test_pretrained_model('/test_imgs')
     rospy.spin()
