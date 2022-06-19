@@ -61,7 +61,8 @@ class BasicBlock(nn.Module):
     ) -> None:
         super().__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            # norm_layer = nn.BatchNorm2d
+            norm_layer = nn.Identity
         if groups != 1 or base_width != 64:
             raise ValueError("BasicBlock only supports groups=1 and base_width=64")
         if dilation > 1:
@@ -118,7 +119,8 @@ class Bottleneck(nn.Module):
     ) -> None:
         super().__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            # norm_layer = nn.BatchNorm2d
+            norm_layer = nn.Identity
         width = int(planes * (base_width / 64.0)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
@@ -167,7 +169,8 @@ class TinyResNet(nn.Module):
         replace_stride_with_dilation: Optional[List[bool]] = None,
     ) -> None:
         super().__init__()
-        norm_layer = nn.BatchNorm2d
+        # norm_layer = nn.BatchNorm2d
+        norm_layer = nn.Identity
         self._norm_layer = norm_layer
 
         self.inplanes = 64
@@ -316,7 +319,8 @@ class DecoderNet(nn.Module):
         # (64, 28, 28) --> (32, 56, 56)
         in_channel = 64
         self.conv = nn.ConvTranspose2d(in_channel, 32, kernel_size=4, stride=2, padding=1, bias=False)
-        self.bn = nn.BatchNorm2d(32)
+        # self.bn = nn.BatchNorm2d(32)
+        self.bn = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
         self.out_conv = conv1x1(32, num_classes, bias=True)
 
