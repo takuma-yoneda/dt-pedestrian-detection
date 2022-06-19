@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from pedestrian_detection.helper import ROS_INFO, cvbridge
 import rospy
 
-from std_msgs.msg import Bool
+from std_msgs.msg import Float32
 from pedestrian_detection.msg import LanePose
 
 from sensor_msgs.msg import CompressedImage, Image, PointCloud2, PointField, CompressedImage
@@ -71,7 +71,7 @@ class Detector:
         if torch.cuda.is_available:
             ROS_INFO('CUDA is available!!')
 
-        rospy.init_node('detector')
+        rospy.init_node('pedestrian_detection')
 
         # Load the pretrained model
         ROS_INFO(f'loading pretrained model from {model_path}...')
@@ -80,9 +80,12 @@ class Detector:
 
         # self.segm_pub = rospy.Publisher("/detection/segmentation", queue_size=1)
         # self.segm_vis_pub = rospy.Publisher("/detection/segmentation_vis", CompressedImage, queue_size=1)  # Just for visualization
-        self.segm_vis_pub = rospy.Publisher("~pedestrian_detection/segmentation_vis", Image, queue_size=1)  # Just for visualization
-        self.lanepose_pub = rospy.Publisher("~pedestrian_detection/lanepose", LanePose, queue_size=1)
-        self.pedest_pub = rospy.Publisher("~pedestrian_detection/pedestrian", Bool, queue_size=1)
+        self.segm_vis_pub = rospy.Publisher("~segmentation_vis", Image, queue_size=1)  # Just for visualization
+        self.lanepose_pub = rospy.Publisher("~lanepose", LanePose, queue_size=1)
+        self.pedest_pub = rospy.Publisher("~pedestrian", Float32, queue_size=1)
+
+        # DEBUG
+        self.resized_img_pub = rospy.Publisher("~resized_img", Image, queue_size=1)
 
         # DEBUG
         # self.reconstr_vis_pub = rospy.Publisher("/detection/reconstr_img__vis", CompressedImage, queue_size=1)
@@ -100,10 +103,19 @@ class Detector:
         _img = cvbridge.compressed_imgmsg_to_cv2(compr_img_msg, desired_encoding="bgr8")
 
         # Resize image to (112 x 112) and normalize
-        # img = cv2.resize(image_np.copy(), dsize=(112, 112), interpolation=cv2.INTER_CUBIC).swapaxes(0, 2)
-        img = cv2.resize(_img.copy(), dsize=(112, 112), interpolation=cv2.INTER_CUBIC).swapaxes(0, 2)
-        img = img / 255
+        img = cv2.resize(_img.copy(), dsize=(112, 112), interpolation=cv2.INTER_CUBIC)
+        # img = cv2.resize(_img.copy(), dsize=(112, 112), interpolation=cv2.INTER_AREA)  # INTER_AREA is better than INTER_CUBIC
+        # img = cv2.GaussianBlur(img, (5,5), 0)  # This deteriorates sgementation performance
+        img = cv2.cvtColor(img.copy(), cv2.COLOR_BGR2RGB)
 
+        img_resized = cvbridge.cv2_to_imgmsg(img, encoding="rgb8")
+        self.resized_img_pub.publish(img_resized)
+
+        # (height, width, channel) -> (channel, width, height)  (?)
+        img = img / 255
+        img = img.transpose(2, 0, 1)
+        import time
+        now = time.time()
         tensor = torch.as_tensor(img)
         ROS_INFO(f'input tensor dtype {tensor.dtype}')
         ROS_INFO('hello')
@@ -118,7 +130,12 @@ class Detector:
         lanepose = LanePose(offset=offset.item(), phi=phi.item())
 
         _, pedest = self.model.pedest.predict(tensor)
-        pedest = Bool(data=bool(pedest.item()))
+        ROS_INFO(f'pedest.item(): {pedest.item()}')
+        # pedest = Bool(data=bool(pedest.item()))
+        pedest = pedest.item()
+
+        elapsed = time.time() - now
+        ROS_INFO(f'elapsed: {elapsed}')
 
         # Publish messages
         # self.segm_pub.publish(msg)
