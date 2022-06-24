@@ -51,7 +51,7 @@ def load_model(path: str, device):
 
 
 class Detector:
-    def __init__(self, node_name, duckie_name, model_path) -> None:
+    def __init__(self, node_name, model_path) -> None:
         """
         Subscriber:
             ~image (:obj:`sensor_msgs.msg.CompressedImage`): Input image
@@ -59,10 +59,9 @@ class Detector:
             ~detection (:obj:`boolStamped`): Pedestrian Detection Flag
         """
         from collections import deque
-        # assert torch.cuda.is_available()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        if torch.cuda.is_available:
-            ROS_INFO('CUDA is available!!')
+        if not torch.cuda.is_available:
+            ROS_WARN('CUDA is NOT available!! The execution can be horribly slow')
 
         rospy.init_node(node_name)
 
@@ -72,24 +71,27 @@ class Detector:
         self.model = load_model(model_path, self.device)
         ROS_INFO(f'loading pretrained model from {model_path}...done')
 
+        # Parameters
+        self.detection_threshold = rospy.get_param("~detection_threshold", 0.7)
+        self.time_window = rospy.get_param("~time_window", 3)
+
+        ROS_INFO(f'detection threshold: {self.detection_threshold}')
+        ROS_INFO(f'time window: {self.time_window}')
+
         self.last_stamp = rospy.Time.now()
-        self.process_frequency = 10  # NOTE: not sure if this is reasonable...
+        self.process_frequency = 10  # NOTE: not sure if this is reasonable...  # TODO: Use rosparam
         self.publish_duration = rospy.Duration.from_sec(1.0 / self.process_frequency)
 
         # self.segm_pub = rospy.Publisher("/detection/segmentation", queue_size=1)
         # self.segm_vis_pub = rospy.Publisher("/detection/segmentation_vis", CompressedImage, queue_size=1)  # Just for visualization
         # self.segm_vis_pub = rospy.Publisher("~segmentation_vis", Image, queue_size=1)  # Just for visualization
         # self.lanepose_pub = rospy.Publisher("~lanepose", LanePose, queue_size=1)
+        self.img_sub = rospy.Subscriber("~img_compressed", CompressedImage, self.cb_image, queue_size=1, buff_size=20 * 1024 ** 2)
         self.pedest_pub = rospy.Publisher("~detection_score", Float32, queue_size=1)
         self.pub_detection_flag = rospy.Publisher("~detection", BoolStamped, queue_size=1)
 
-
-        # TODO: fix it to handle general duckie names. Is there a rosparam for it??
-        image_topic = f'/{duckie_name}/camera_node/image/compressed'  # rospy.get_param("~joy_topic", '/joy_teleop/joy')
-        self.img_sub = rospy.Subscriber(image_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=20 * 1024 ** 2)
-
         self._filtering = True
-        self._past_detections = deque([False] * 3, maxlen=3)
+        self._past_detections = deque([False] * self.time_window, maxlen=self.time_window)
 
 
     @staticmethod
@@ -126,21 +128,20 @@ class Detector:
         tensor = torch.as_tensor(img)
         tensor = tensor.unsqueeze(0).float().to(self.device)  # Add batch dim
 
+        # Predict segmentation
         # segm = self.model.segment.predict(tensor)
         # segm_img = colorize_segmentation(segm.cpu().numpy())
 
+        # Predict lane offset & angle
         # offset, phi = self.model.lanepos.predict(tensor)
         # lanepose = LanePose(offset=offset.item(), phi=phi.item())
 
+        # Detect pedestrian
         _, pedest_prob = self.model.pedest.predict(tensor)
         ROS_INFO(f'pedest_prob: {pedest_prob.item()}')
         pedest_prob = pedest_prob.item()
 
-        # if the pattern is detected, cv2.findCirclesGrid returns a non-zero result, otherwise it returns 0
-        # vehicle_detected_msg_out.data = detection > 0
-        # self.pub_detection.publish(vehicle_detected_msg_out)
-
-        detection = pedest_prob > 0.5
+        detection = pedest_prob > self.detection_threshold
         self._past_detections.appendleft(detection)
 
         detection_flag_msg = BoolStamped()
@@ -151,7 +152,6 @@ class Detector:
             detection_flag_msg.data = all(self._past_detections)
 
         self.pub_detection_flag.publish(detection_flag_msg)
-
 
         # Publish new image
         # NOTE: Look at https://github.com/whats-in-a-name/CarND-Capstone/commit/de9ad68f4e5f1f983dd79254a71a51894946ac11
@@ -209,11 +209,8 @@ if __name__ == '__main__':
     import pathlib
     import os
     cur_dir = pathlib.Path(__file__).absolute().parent
-    # duckie_name = os.getenv('VEHICLE_NAME')
-    duckie_name = 'yoneduckie'
-    print('duckie_name', duckie_name)
     model_path = cur_dir / 'model.pt'
-    print('model_path', model_path)
-    detector = Detector('pedestrian_detection', duckie_name, model_path=model_path)
+    ROS_INFO(f'model_path: {model_path}')
+    detector = Detector('pedestrian_detection', model_path=model_path)
     # detector.test_pretrained_model('/test_imgs')
     rospy.spin()

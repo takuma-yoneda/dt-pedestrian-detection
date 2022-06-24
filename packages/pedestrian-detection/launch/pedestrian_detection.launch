@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+    <arg name="veh" default="$(env VEHICLE_NAME)"/>
+    <arg name="pkg_name" value="pedestrian_detection"/>
+    <arg name="param_file_name" default="default" doc="Specify a param file. ex:megaman"/>
+    <arg name="node_name" default="pedestrian_detection_node"/>
+	<arg name="camera_topic" default="camera_node"/>
+
+    <!-- TODO: is it alright? -->
+    <remap from="$(arg pkg_name)/img_compressed" to="$(arg camera_topic)/image/compressed"/>
+
+    <group ns="$(arg veh)">
+        <node name="pedestrian_detection" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" >
+          <rosparam command="load" file="$(find pedestrian_detection)/config/$(arg node_name)/$(arg param_file_name).yaml"/>
+        </node>
+    </group>
+</launch>
