@@ -14,7 +14,7 @@ dt-launchfile-init
 
 # launching app
 # dt-exec echo "This is an empty launch script. Update it to launch your application."
-dt-exec roslaunch pedestrian_detection pedestrian_detection.launch
+dt-exec roslaunch pedestrian_detection pedestrian_detection.launch veh:=$VEHICLE_NAME
 
 
 # ----------------------------------------------------------------------------

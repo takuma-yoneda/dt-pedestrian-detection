@@ -6,11 +6,12 @@
     <arg name="node_name" default="pedestrian_detection_node"/>
 	<arg name="camera_topic" default="camera_node"/>
 
-    <!-- TODO: is it alright? -->
-    <remap from="$(arg pkg_name)/img_compressed" to="$(arg camera_topic)/image/compressed"/>
-
     <group ns="$(arg veh)">
-        <node name="pedestrian_detection" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" >
+        <remap from="$(arg node_name)/img_compressed" to="$(arg camera_topic)/image/compressed"/>
+        <remap from="$(arg node_name)/detection_score" to="pedestrian_detection/score"/>
+        <remap from="$(arg node_name)/detection" to="pedestrian_detection/detection"/>
+
+        <node name="$(arg node_name)" pkg="$(arg pkg_name)" type="$(arg node_name).py" output="screen" >
           <rosparam command="load" file="$(find pedestrian_detection)/config/$(arg node_name)/$(arg param_file_name).yaml"/>
         </node>
     </group>

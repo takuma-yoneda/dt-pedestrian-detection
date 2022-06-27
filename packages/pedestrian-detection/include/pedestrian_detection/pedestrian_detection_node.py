@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from pedestrian_detection.helper import ROS_INFO, cvbridge
+from pedestrian_detection.helper import *
 import rospy
 
 from std_msgs.msg import Float32
@@ -65,14 +65,8 @@ class Detector:
 
         rospy.init_node(node_name)
 
-
-        # Load the pretrained model
-        ROS_INFO(f'loading pretrained model from {model_path}...')
-        self.model = load_model(model_path, self.device)
-        ROS_INFO(f'loading pretrained model from {model_path}...done')
-
         # Parameters
-        self.detection_threshold = rospy.get_param("~detection_threshold", 0.7)
+        self.detection_threshold = rospy.get_param("~detection_threshold", 0.9)
         self.time_window = rospy.get_param("~time_window", 3)
 
         ROS_INFO(f'detection threshold: {self.detection_threshold}')
@@ -82,16 +76,24 @@ class Detector:
         self.process_frequency = 10  # NOTE: not sure if this is reasonable...  # TODO: Use rosparam
         self.publish_duration = rospy.Duration.from_sec(1.0 / self.process_frequency)
 
-        # self.segm_pub = rospy.Publisher("/detection/segmentation", queue_size=1)
-        # self.segm_vis_pub = rospy.Publisher("/detection/segmentation_vis", CompressedImage, queue_size=1)  # Just for visualization
-        # self.segm_vis_pub = rospy.Publisher("~segmentation_vis", Image, queue_size=1)  # Just for visualization
-        # self.lanepose_pub = rospy.Publisher("~lanepose", LanePose, queue_size=1)
-        self.img_sub = rospy.Subscriber("~img_compressed", CompressedImage, self.cb_image, queue_size=1, buff_size=20 * 1024 ** 2)
+        self._has_image = True
         self.pedest_pub = rospy.Publisher("~detection_score", Float32, queue_size=1)
         self.pub_detection_flag = rospy.Publisher("~detection", BoolStamped, queue_size=1)
 
         self._filtering = True
         self._past_detections = deque([False] * self.time_window, maxlen=self.time_window)
+
+        # Load the pretrained model
+        ROS_INFO(f'loading pretrained model from {model_path}...')
+        self.model = load_model(model_path, self.device)
+        ROS_INFO(f'loading pretrained model from {model_path}...done')
+
+        self.img_sub = rospy.Subscriber("~img_compressed", CompressedImage, self.cb_image, queue_size=1, buff_size=20 * 1024 ** 2)
+        # self.segm_pub = rospy.Publisher("/detection/segmentation", queue_size=1)
+        # self.segm_vis_pub = rospy.Publisher("/detection/segmentation_vis", CompressedImage, queue_size=1)  # Just for visualization
+        # self.segm_vis_pub = rospy.Publisher("~segmentation_vis", Image, queue_size=1)  # Just for visualization
+        # self.lanepose_pub = rospy.Publisher("~lanepose", LanePose, queue_size=1)
+
 
 
     @staticmethod
@@ -160,6 +162,10 @@ class Detector:
         # self.lanepose_pub.publish(lanepose)
         self.pedest_pub.publish(pedest_prob)
 
+        if self._has_image:
+            ROS_INFO("Pedestrian detection ready")
+            self._has_image = False
+
     @torch.no_grad()
     def test_pretrained_model(self, data_dir):
         """Test the pretrained model with an offline data."""
@@ -211,6 +217,6 @@ if __name__ == '__main__':
     cur_dir = pathlib.Path(__file__).absolute().parent
     model_path = cur_dir / 'model.pt'
     ROS_INFO(f'model_path: {model_path}')
-    detector = Detector('pedestrian_detection', model_path=model_path)
+    detector = Detector('pedestrian_detection_node', model_path=model_path)
     # detector.test_pretrained_model('/test_imgs')
     rospy.spin()
