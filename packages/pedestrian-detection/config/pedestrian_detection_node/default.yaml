@@ -1,2 +1,2 @@
-detection_threshold: 0.7
+detection_threshold: 0.9
 time_window: 3
